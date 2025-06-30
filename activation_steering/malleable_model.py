@@ -486,6 +486,8 @@ class MalleableModel(torch.nn.Module):
             - For detailed information on available arguments and their effects,
             refer to the documentation of the specific pre-trained model being used.
         """
+        # reset for each call
+        LeashLayer.clean_leashes()
         return self.model.generate(*args, **kwargs)
 
     def respond(
@@ -786,6 +788,18 @@ class MalleableModel(torch.nn.Module):
             The output of the underlying model.
         """
         return self.model(*args, **kwargs)
+
+    def clean_leashes(self):
+        """
+        Clean up the leashes in the model.
+
+        This method iterates through all layers of the model and cleans up any leash-related data.
+        It is useful for resetting the leash state without removing the leash layers themselves.
+
+        Returns:
+            None
+        """
+        LeashLayer.clean_leashes()
 
 
 def get_model_layer_list(

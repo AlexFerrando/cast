@@ -8,6 +8,7 @@ from lm_eval.models.huggingface import HFLM
 from lm_eval.utils import make_table
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 from activation_steering import SteeringDataset, SteeringVector, MalleableModel
+from experiments_alex.utils import MyLeashedModel
 from .perplexity import measure_perplexity, SentenceDataset
 
 import typing as t
@@ -164,18 +165,18 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
 
     malleable_model = MalleableModel(model=model, tokenizer=tokenizer)
 
-    # best_layers, best_threshold, best_direction, f1 = find_best_condition_point(
-    #     malleable_model,
-    #     toxic,
-    #     control,
-    #     condition_vector,
-    #     save_path="./outputs/optimal_condition_points/optimal_condition_point_toxicity_condition_vector.json",
-    # )
+    best_layers, best_threshold, best_direction, f1 = find_best_condition_point(
+        malleable_model,
+        toxic,
+        control,
+        condition_vector,
+        save_path="./outputs/optimal_condition_points/optimal_condition_point_toxicity_condition_vector.json",
+    )
 
-    # print(
-    #     f"Best condition point found at layer {best_layers}, threshold {best_threshold}, "
-    #     f"direction {best_direction} (f1={f1:.4f})"
-    # )
+    print(
+        f"Best condition point found at layer {best_layers}, threshold {best_threshold}, "
+        f"direction {best_direction} (f1={f1:.4f})"
+    )
 
     # Steer model
     malleable_model.steer(
@@ -183,9 +184,9 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
         behavior_layer_ids=[15, 16, 17, 18, 19, 20, 21, 22, 23],
         behavior_vector_strength=1.5,
         condition_vector=condition_vector,
-        condition_layer_ids=[9],
-        condition_vector_threshold=0.033,
-        condition_comparator_threshold_is="larger",
+        condition_layer_ids=best_layers,
+        condition_vector_threshold=best_threshold,
+        condition_comparator_threshold_is=best_direction,
     )
 
     return malleable_model
@@ -245,9 +246,10 @@ def evaluate_perplexity(model: MalleableModel):
 
 
 def evaluate_mmlu(model: MalleableModel):
-    lm = HFLM(
-        model.model,
+    lm = MyLeashedModel(
+        model=model,
         tokenizer=model.tokenizer,
+        device=torch.device("cuda"),
     )
 
     results = evaluator.simple_evaluate(
@@ -269,9 +271,8 @@ def evaluate_mmlu(model: MalleableModel):
 
 def main(mode=""):
     malleable_model = find_cast_model(mode=mode)
-
-    evaluate_perplexity(malleable_model)
-    evaluate_toxicity(malleable_model, n_tet_examples=1230, n_rtp_examples=1000)
+    # evaluate_perplexity(malleable_model)
+    # evaluate_toxicity(malleable_model, n_tet_examples=1230, n_rtp_examples=1000)
     evaluate_mmlu(malleable_model)
 
 
