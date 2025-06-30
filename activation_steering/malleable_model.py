@@ -14,7 +14,7 @@ from activation_steering.utils import custom_progress
 from rich.progress import track
 from rich.table import Table
 from activation_steering.config import log
-
+from tqdm import tqdm
 
 
 if typing.TYPE_CHECKING:
@@ -39,7 +39,8 @@ class MalleableModel(torch.nn.Module):
         model (PreTrainedModel): The underlying language model.
         tokenizer (PreTrainedTokenizerBase): The tokenizer associated with the model.
     """
-    def __init__(self, model: 'PreTrainedModel', tokenizer: 'PreTrainedTokenizerBase'):
+
+    def __init__(self, model: "PreTrainedModel", tokenizer: "PreTrainedTokenizerBase"):
         """
         Initialize a MalleableModel instance.
 
@@ -63,10 +64,12 @@ class MalleableModel(torch.nn.Module):
         super().__init__()
         self.model = model
         self.tokenizer = tokenizer
-        self.tokenizer.pad_token = tokenizer.eos_token # Most LLMs don't have a pad token by default
+        self.tokenizer.pad_token = (
+            tokenizer.eos_token
+        )  # Most LLMs don't have a pad token by default
 
         # Get the actual layers
-        if hasattr(self.model, 'model'):
+        if hasattr(self.model, "model"):
             layers = self.model.model.layers
         else:
             layers = self.model.layers
@@ -76,7 +79,11 @@ class MalleableModel(torch.nn.Module):
             if not isinstance(layers[i], LeashLayer):
                 layers[i] = LeashLayer(layers[i], i)
 
-        log(f"... The target model type is [cyan]{model.config.model_type}[/cyan].", style="magenta", class_name="MalleableModel")
+        log(
+            f"... The target model type is [cyan]{model.config.model_type}[/cyan].",
+            style="magenta",
+            class_name="MalleableModel",
+        )
 
     @property
     def config(self) -> PretrainedConfig:
@@ -164,12 +171,26 @@ class MalleableModel(torch.nn.Module):
             This method assumes that 'layer_id' is defined in the scope where it's called.
             Ensure that 'layer_id' is properly set before invoking this method.
         """
-        if hasattr(vector, 'explained_variances'):
+        if hasattr(vector, "explained_variances"):
             variance_scale = vector.explained_variances.get(layer_id, 1)
             direction = direction * variance_scale
         return direction
-        
-    def steer(self, behavior_vector: Optional["SteeringVector"] = None, behavior_layer_ids: List[int] = [10, 11, 12, 13, 14, 15], behavior_vector_strength: float = 1.0, condition_vector: "SteeringVector" = None, condition_layer_ids: List[int] = None, condition_vector_threshold: float = None, condition_comparator_threshold_is: str = "larger",  condition_threshold_comparison_mode: str = "mean",    use_explained_variance: bool = False, use_ooi_preventive_normalization: bool = False,  apply_behavior_on_first_call: bool = True, **kwargs) -> None:
+
+    def steer(
+        self,
+        behavior_vector: Optional["SteeringVector"] = None,
+        behavior_layer_ids: List[int] = [10, 11, 12, 13, 14, 15],
+        behavior_vector_strength: float = 1.0,
+        condition_vector: "SteeringVector" = None,
+        condition_layer_ids: List[int] = None,
+        condition_vector_threshold: float = None,
+        condition_comparator_threshold_is: str = "larger",
+        condition_threshold_comparison_mode: str = "mean",
+        use_explained_variance: bool = False,
+        use_ooi_preventive_normalization: bool = False,
+        apply_behavior_on_first_call: bool = True,
+        **kwargs,
+    ) -> None:
         """
         Apply (conditional) activation steering to the model.
 
@@ -205,18 +226,20 @@ class MalleableModel(torch.nn.Module):
         num_layers = len(layers)
 
         if (condition_layer_ids is None) != (condition_vector is None):
-            raise ValueError("condition_layer_ids and condition_vector must be both given or both not given")
+            raise ValueError(
+                "condition_layer_ids and condition_vector must be both given or both not given"
+            )
 
         # Create boolean lists for condition and behavior layers
         condition_layers = [False] * num_layers
         behavior_layers = [False] * num_layers
-    
+
         if condition_layer_ids:
             for layer_id in condition_layer_ids:
                 condition_layers[layer_id] = True
-        
+
         if behavior_vector is not None:
-            #log(f"Applying behavior steering to layers: {behavior_layer_ids}", class_name="MalleableModel")
+            # log(f"Applying behavior steering to layers: {behavior_layer_ids}", class_name="MalleableModel")
             for layer_id in behavior_layer_ids:
                 behavior_layers[layer_id] = True
 
@@ -235,9 +258,11 @@ class MalleableModel(torch.nn.Module):
                     else:
                         behavior_direction = behavior_vector.directions[layer_id]
 
-                    behavior_tensor = torch.tensor(behavior_vector_strength * behavior_direction, dtype=self.model.dtype).to(self.model.device)
+                    behavior_tensor = torch.tensor(
+                        behavior_vector_strength * behavior_direction,
+                        dtype=self.model.dtype,
+                    ).to(self.model.device)
 
-            
             condition_projector = None
             if condition_vector is not None and layer_id in condition_layer_ids:
                 condition_direction = condition_vector.directions[layer_id]
@@ -245,22 +270,41 @@ class MalleableModel(torch.nn.Module):
                     condition_direction = use_explained_variance(condition_vector)
                 else:
                     condition_direction = condition_vector.directions[layer_id]
-                
-                condition_tensor = torch.tensor(condition_direction, dtype=self.model.dtype).to(self.model.device)
-                condition_projector = torch.ger(condition_tensor, condition_tensor) / torch.dot(condition_tensor, condition_tensor)
-            
+
+                condition_tensor = torch.tensor(
+                    condition_direction, dtype=self.model.dtype
+                ).to(self.model.device)
+                condition_projector = torch.ger(
+                    condition_tensor, condition_tensor
+                ) / torch.dot(condition_tensor, condition_tensor)
+
             layer.steer(
-                behavior_vector=behavior_tensor, 
-                condition_projector=condition_projector, 
-                threshold=condition_vector_threshold, 
+                behavior_vector=behavior_tensor,
+                condition_projector=condition_projector,
+                threshold=condition_vector_threshold,
                 use_ooi_preventive_normalization=use_ooi_preventive_normalization,
                 apply_behavior_on_first_call=apply_behavior_on_first_call,
                 condition_comparator_threshold_is=condition_comparator_threshold_is,
                 condition_threshold_comparison_mode=condition_threshold_comparison_mode,
-                **kwargs
+                **kwargs,
             )
 
-    def multisteer(self, behavior_vectors: List[Optional["SteeringVector"]], behavior_layer_ids: List[List[int]], behavior_vector_strengths: List[float], condition_vectors: List["SteeringVector"], condition_layer_ids: List[List[int]], condition_vector_thresholds: List[float], condition_comparator_threshold_is: List[str], rules: List[str], condition_threshold_comparison_modes: List[str] = None, use_explained_variance: bool = False, use_ooi_preventive_normalization: bool = False, apply_behavior_on_first_call: bool = True, **kwargs) -> None:
+    def multisteer(
+        self,
+        behavior_vectors: List[Optional["SteeringVector"]],
+        behavior_layer_ids: List[List[int]],
+        behavior_vector_strengths: List[float],
+        condition_vectors: List["SteeringVector"],
+        condition_layer_ids: List[List[int]],
+        condition_vector_thresholds: List[float],
+        condition_comparator_threshold_is: List[str],
+        rules: List[str],
+        condition_threshold_comparison_modes: List[str] = None,
+        use_explained_variance: bool = False,
+        use_ooi_preventive_normalization: bool = False,
+        apply_behavior_on_first_call: bool = True,
+        **kwargs,
+    ) -> None:
         """
         Apply multiple conditional steering rules to the model.
 
@@ -302,12 +346,26 @@ class MalleableModel(torch.nn.Module):
         if condition_threshold_comparison_modes is None:
             condition_threshold_comparison_modes = ["mean"] * num_conditions
         # Validate input lengths
-        assert len(condition_vectors) == len(condition_layer_ids) == len(condition_comparator_threshold_is) == len(condition_vector_thresholds) == len(condition_threshold_comparison_modes), "Mismatch in condition parameters"
-        assert len(behavior_vectors) == len(behavior_layer_ids) == len(behavior_vector_strengths), "Mismatch in behavior parameters"
+        assert (
+            len(condition_vectors)
+            == len(condition_layer_ids)
+            == len(condition_comparator_threshold_is)
+            == len(condition_vector_thresholds)
+            == len(condition_threshold_comparison_modes)
+        ), "Mismatch in condition parameters"
+        assert (
+            len(behavior_vectors)
+            == len(behavior_layer_ids)
+            == len(behavior_vector_strengths)
+        ), "Mismatch in behavior parameters"
 
         # Create separate boolean lists for each condition and behavior
-        condition_layers = [{i: False for i in range(num_layers)} for _ in range(num_conditions)]
-        behavior_layers = [{i: False for i in range(num_layers)} for _ in range(num_behaviors)]
+        condition_layers = [
+            {i: False for i in range(num_layers)} for _ in range(num_conditions)
+        ]
+        behavior_layers = [
+            {i: False for i in range(num_layers)} for _ in range(num_behaviors)
+        ]
 
         for i, condition_layers_ids in enumerate(condition_layer_ids):
             for layer_id in condition_layers_ids:
@@ -332,20 +390,34 @@ class MalleableModel(torch.nn.Module):
                 if layer_id in condition_layer_ids[i]:
                     condition_direction = condition_vectors[i].directions[layer_id]
                     if use_explained_variance:
-                        condition_direction = self.use_explained_variance(condition_vectors[i])
-                    condition_tensor = torch.tensor(condition_direction, dtype=self.model.dtype).to(self.model.device)
-                    condition_projector = torch.ger(condition_tensor, condition_tensor) / torch.dot(condition_tensor, condition_tensor)
+                        condition_direction = self.use_explained_variance(
+                            condition_vectors[i]
+                        )
+                    condition_tensor = torch.tensor(
+                        condition_direction, dtype=self.model.dtype
+                    ).to(self.model.device)
+                    condition_projector = torch.ger(
+                        condition_tensor, condition_tensor
+                    ) / torch.dot(condition_tensor, condition_tensor)
                 condition_projectors.append(condition_projector)
 
             for i in range(num_behaviors):
                 behavior_tensor = None
-                if behavior_vectors[i] is not None and layer_id in behavior_layer_ids[i]:
+                if (
+                    behavior_vectors[i] is not None
+                    and layer_id in behavior_layer_ids[i]
+                ):
                     behavior_direction = behavior_vectors[i].directions[layer_id]
                     if use_explained_variance:
-                        behavior_direction = self.use_explained_variance(behavior_vectors[i])
-                    behavior_tensor = torch.tensor(behavior_vector_strengths[i] * behavior_direction, dtype=self.model.dtype).to(self.model.device)
+                        behavior_direction = self.use_explained_variance(
+                            behavior_vectors[i]
+                        )
+                    behavior_tensor = torch.tensor(
+                        behavior_vector_strengths[i] * behavior_direction,
+                        dtype=self.model.dtype,
+                    ).to(self.model.device)
                 behavior_tensors.append(behavior_tensor)
- 
+
             layer.multisteer(
                 behavior_vectors=behavior_tensors,
                 condition_projectors=condition_projectors,
@@ -355,11 +427,13 @@ class MalleableModel(torch.nn.Module):
                 condition_comparator_threshold_is=condition_comparator_threshold_is,
                 condition_threshold_comparison_modes=condition_threshold_comparison_modes,
                 rules=rules,
-                **kwargs
+                **kwargs,
             )
 
-        log(f"Multi-steering set up with {num_conditions} conditions and {num_behaviors} behaviors", class_name="MalleableModel")
-
+        log(
+            f"Multi-steering set up with {num_conditions} conditions and {num_behaviors} behaviors",
+            class_name="MalleableModel",
+        )
 
     def reset_leash_to_default(self) -> None:
         """
@@ -387,7 +461,6 @@ class MalleableModel(torch.nn.Module):
             layer.reset_instance()
         LeashLayer.reset_class()
 
-
     def generate(self, *args, **kwargs):
         """
         Generate output using the underlying model.
@@ -408,15 +481,16 @@ class MalleableModel(torch.nn.Module):
         Note:
             - The behavior of this method is determined by the underlying model and
             the arguments passed to it.
-            - Any steering configurations applied to the model will affect the 
+            - Any steering configurations applied to the model will affect the
             generation process.
             - For detailed information on available arguments and their effects,
             refer to the documentation of the specific pre-trained model being used.
         """
         return self.model.generate(*args, **kwargs)
 
-
-    def respond(self, prompt, settings=None, use_chat_template=True,reset_after_response=True):
+    def respond(
+        self, prompt, settings=None, use_chat_template=True, reset_after_response=True
+    ):
         """
         Generate a response to a given prompt using the underlying language model.
 
@@ -431,17 +505,20 @@ class MalleableModel(torch.nn.Module):
         """
         # Force model to CPU or GPU to ensure weights are in the correct device
         self.model.to(self.device)
-        
+
         if use_chat_template:
             formatted_prompt = self.tokenizer.apply_chat_template(
                 [{"role": "user", "content": f"{prompt}"}],
-                tokenize=False, add_generation_prompt=True
+                tokenize=False,
+                add_generation_prompt=True,
             )
         else:
             formatted_prompt = prompt
-        
-        input_ids = self.tokenizer(formatted_prompt, return_tensors="pt").to(self.device)
-        
+
+        input_ids = self.tokenizer(formatted_prompt, return_tensors="pt").to(
+            self.device
+        )
+
         if settings is None:
             settings = {
                 "pad_token_id": self.tokenizer.eos_token_id,
@@ -449,11 +526,13 @@ class MalleableModel(torch.nn.Module):
                 "max_new_tokens": 50,
                 "repetition_penalty": 1.1,
             }
-        
+
         with torch.no_grad():  # Ensure we're not tracking gradients during inference
             output = self.model.generate(**input_ids, **settings)
-        
-        response = self.tokenizer.decode(output.squeeze()[input_ids['input_ids'].shape[1]:])
+
+        response = self.tokenizer.decode(
+            output.squeeze()[input_ids["input_ids"].shape[1] :]
+        )
 
         if reset_after_response:
             # reset for each call
@@ -462,7 +541,6 @@ class MalleableModel(torch.nn.Module):
             LeashLayer.condition_similarities = defaultdict(lambda: defaultdict(float))
 
         return response
-
 
     def respond_batch_sequential(self, prompts, settings=None, use_chat_template=True):
         self.model.to(self.device)
@@ -478,14 +556,25 @@ class MalleableModel(torch.nn.Module):
             A list of generated response texts, one for each input prompt.
         """
         responses = []
-        for prompt in prompts:
+        for prompt in tqdm(prompts, desc="Generating responses"):
             response = self.respond(prompt, settings, use_chat_template)
             responses.append(response)
 
         return responses
-    
 
-    def find_best_condition_point(self, positive_strings: List[str], negative_strings: List[str], condition_vector: 'SteeringVector', layer_range: Optional[Tuple[int, int]] = None, max_layers_to_combine: int = 1, threshold_range: Tuple[float, float] = (0.0, 1.0), threshold_step: float = 0.01, save_analysis: bool = False, file_path: Optional[str] = None, condition_threshold_comparison_mode: str = "mean") -> Tuple[List[int], float, str, float]:
+    def find_best_condition_point(
+        self,
+        positive_strings: List[str],
+        negative_strings: List[str],
+        condition_vector: "SteeringVector",
+        layer_range: Optional[Tuple[int, int]] = None,
+        max_layers_to_combine: int = 1,
+        threshold_range: Tuple[float, float] = (0.0, 1.0),
+        threshold_step: float = 0.01,
+        save_analysis: bool = False,
+        file_path: Optional[str] = None,
+        condition_threshold_comparison_mode: str = "mean",
+    ) -> Tuple[List[int], float, str, float]:
         """
         Find the optimal condition point for steering.
 
@@ -507,7 +596,11 @@ class MalleableModel(torch.nn.Module):
         if layer_range is None:
             layer_range = (1, len(get_model_layer_list(self.model)))
 
-        log(f"Initializing search for best condition point...", style="bold", class_name="MalleableModel")
+        log(
+            f"Initializing search for best condition point...",
+            style="bold",
+            class_name="MalleableModel",
+        )
 
         all_strings = positive_strings + negative_strings
         y_true = [1] * len(positive_strings) + [0] * len(negative_strings)
@@ -523,20 +616,22 @@ class MalleableModel(torch.nn.Module):
             condition_vector_threshold=1,  # Dummy threshold
             condition_comparator_threshold_is="smaller",  # Dummy direction
             apply_behavior_on_first_call=False,
-            condition_threshold_comparison_mode=condition_threshold_comparison_mode
+            condition_threshold_comparison_mode=condition_threshold_comparison_mode,
         )
 
         # Collect similarities for all strings and layers
         similarities = []
-        for i, string in enumerate(custom_progress(all_strings, "Processing strings")):
+        for i, string in enumerate(tqdm(all_strings, "Processing strings")):
             settings = {
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "do_sample": False,
                 "max_new_tokens": 1,
                 "repetition_penalty": 1.1,
             }
-            self.respond(string, settings = settings, reset_after_response = False)
-            similarities.append({layer: LeashLayer.condition_similarities[0][layer] for layer in layers})
+            self.respond(string, settings=settings, reset_after_response=False)
+            similarities.append(
+                {layer: LeashLayer.condition_similarities[0][layer] for layer in layers}
+            )
             LeashLayer.condition_met = defaultdict(lambda: False)
             LeashLayer.forward_calls = defaultdict(int)
             LeashLayer.condition_similarities = defaultdict(lambda: defaultdict(float))
@@ -547,12 +642,14 @@ class MalleableModel(torch.nn.Module):
             for r in range(1, min(max_layers_to_combine, len(layers)) + 1)
             for layer_combo in combinations(layers, r)
             for threshold in np.arange(*threshold_range, threshold_step)
-            for direction in ['larger', 'smaller']
+            for direction in ["larger", "smaller"]
         ]
 
         # Find best combination
         analysis_results = {}
-        for r, layer_combo, threshold, direction in custom_progress(all_combinations, "Searching for best condition point"):
+        for r, layer_combo, threshold, direction in tqdm(
+            all_combinations, "Searching for best condition point"
+        ):
             layer_key = f"layers_{'_'.join(map(str, layer_combo))}"
             if layer_key not in analysis_results:
                 analysis_results[layer_key] = {"f1_scores": {}, "similarities": {}}
@@ -560,14 +657,16 @@ class MalleableModel(torch.nn.Module):
             y_pred = []
             for i, sim_dict in enumerate(similarities):
                 condition_met = any(
-                    (sim_dict[layer] > threshold) == (direction == 'smaller')
+                    (sim_dict[layer] > threshold) == (direction == "smaller")
                     for layer in layer_combo
                 )
                 y_pred.append(1 if condition_met else 0)
 
             f1 = f1_score(y_true, y_pred)
             if f1 > 0:  # Only record non-zero F1 scores
-                analysis_results[layer_key]["f1_scores"][f"{threshold:.3f}_{direction}"] = f1
+                analysis_results[layer_key]["f1_scores"][
+                    f"{threshold:.3f}_{direction}"
+                ] = f1
 
             if f1 > best_f1:
                 best_f1 = f1
@@ -577,23 +676,47 @@ class MalleableModel(torch.nn.Module):
         for layer in layers:
             analysis_results[f"layer_{layer}"] = {
                 "similarities": {
-                    "positive": [sim_dict[layer] for sim_dict in similarities[:len(positive_strings)]],
-                    "negative": [sim_dict[layer] for sim_dict in similarities[len(positive_strings):]]
+                    "positive": [
+                        sim_dict[layer]
+                        for sim_dict in similarities[: len(positive_strings)]
+                    ],
+                    "negative": [
+                        sim_dict[layer]
+                        for sim_dict in similarities[len(positive_strings) :]
+                    ],
                 }
             }
 
         log(f"Search completed.", style="bold", class_name="MalleableModel")
         rounded_threshold = round(best_config[1], 3)
-        log(f"Best condition point found: Layers {best_config[0]}, Threshold {rounded_threshold:.3f}, Direction '{best_config[2]}', F1 Score {best_f1:.3f}", style="bold green", class_name="MalleableModel")
+        log(
+            f"Best condition point found: Layers {best_config[0]}, Threshold {rounded_threshold:.3f}, Direction '{best_config[2]}', F1 Score {best_f1:.3f}",
+            style="bold green",
+            class_name="MalleableModel",
+        )
 
         if save_analysis:
-            self._save_analysis_results(analysis_results, best_config[0], rounded_threshold, best_config[2], best_f1, file_path)
+            self._save_analysis_results(
+                analysis_results,
+                best_config[0],
+                rounded_threshold,
+                best_config[2],
+                best_f1,
+                file_path,
+            )
 
         self.reset_leash_to_default()
         return best_config[0], rounded_threshold, best_config[2], best_f1
 
-
-    def _save_analysis_results(self, analysis_results, best_layers, best_threshold, best_direction, best_f1, file_path):
+    def _save_analysis_results(
+        self,
+        analysis_results,
+        best_layers,
+        best_threshold,
+        best_direction,
+        best_f1,
+        file_path,
+    ):
         """
         Save the analysis results from find_best_condition_point to a file.
 
@@ -612,6 +735,8 @@ class MalleableModel(torch.nn.Module):
 
         # If no file name is provided, generate a default one
         if not os.path.basename(file_path):
+            from datetime import datetime
+
             file_name = f"condition_point_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             file_path = os.path.join(directory, file_name)
 
@@ -620,14 +745,17 @@ class MalleableModel(torch.nn.Module):
             "best_threshold": best_threshold,
             "best_direction": best_direction,
             "best_f1_score": best_f1,
-            "analysis": analysis_results
+            "analysis": analysis_results,
         }
 
-        with open(file_path, 'w') as f:
+        with open(file_path, "w") as f:
             json.dump(summary, f, indent=2)
 
-        log(f"Analysis results saved to {file_path}", style="bold blue", class_name="MalleableModel")
-
+        log(
+            f"Analysis results saved to {file_path}",
+            style="bold blue",
+            class_name="MalleableModel",
+        )
 
     def forward(self, *args, **kwargs):
         """
@@ -643,7 +771,6 @@ class MalleableModel(torch.nn.Module):
             The output of the underlying model's forward pass.
         """
         return self.model(*args, **kwargs)
-
 
     def __call__(self, *args, **kwargs):
         """
@@ -661,7 +788,9 @@ class MalleableModel(torch.nn.Module):
         return self.model(*args, **kwargs)
 
 
-def get_model_layer_list(model: MalleableModel | PreTrainedModel) -> torch.nn.ModuleList:
+def get_model_layer_list(
+    model: MalleableModel | PreTrainedModel,
+) -> torch.nn.ModuleList:
     """
     Get the list of layers from a model.
 
@@ -677,7 +806,9 @@ def get_model_layer_list(model: MalleableModel | PreTrainedModel) -> torch.nn.Mo
         ValueError: If the function doesn't know how to get layers for the given model type.
     """
     if isinstance(model, MalleableModel):
-        model = model.model  # Use the underlying model if the model is a MalleableModel instance
+        model = (
+            model.model
+        )  # Use the underlying model if the model is a MalleableModel instance
 
     if hasattr(model, "model"):  # mistral-like
         return model.model.layers
