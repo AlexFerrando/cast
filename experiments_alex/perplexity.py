@@ -211,6 +211,7 @@ def _parallel_perplexity_batch(
     logits = model(
         input_ids=tok_all["input_ids"], attention_mask=tok_all["attention_mask"]
     ).logits
+    model.clean_leashes()
     # Compute perplexity for last token (note that indexing at offset + ctx_len gives us the token id right after :(offset + ctx_len))
     loss = torch.nn.functional.cross_entropy(
         logits[:, :-1].reshape(-1, logits.shape[-1]),

@@ -22,6 +22,7 @@ class LeashLayer(nn.Module):
     """
 
     condition_met = defaultdict(bool)
+    condition_met_at = defaultdict(lambda: None)
     forward_calls = defaultdict(int)
     condition_layers = None
     behavior_layers = None
@@ -222,6 +223,62 @@ class LeashLayer(nn.Module):
                 )
                 log(f"[Sample {i}] Condition Met: {met}", class_name="LeashLayer")
 
+    # def _process_single_condition(self, hidden_states):
+    #     """
+    #     Process a single condition for each sample in the batch.
+
+    #     Args:
+    #         hidden_states (Tensor): shape [batch_size, seq_len, hidden_dim]
+    #     """
+    #     batch_size = hidden_states.shape[0]
+    #     for i in range(batch_size):
+    #         if not LeashLayer.condition_met[i]:
+    #             # Get the hidden state representation according to mode
+    #             if self.condition_threshold_comparison_mode == "mean":
+    #                 # Compute cumulative sum along l
+    #                 x = hidden_states[i]  # shape (l, d)
+    #                 cumsum = torch.cumsum(x, dim=0)  # shape (l, d)
+
+    #                 # Create divisors: 1, 2, ..., l
+    #                 lengths = torch.arange(1, x.size(0) + 1, device=x.device).unsqueeze(
+    #                     1
+    #                 )  # shape (l, 1)
+
+    #                 # Compute cumulative mean
+    #                 hidden = cumsum / lengths  # shape (l, d)
+    #             elif self.condition_threshold_comparison_mode == "last":
+    #                 hidden = hidden_states[i, -1, :]
+
+    #             projected = torch.tanh(
+    #                 torch.matmul(self.condition_projector, hidden.T)
+    #             ).T
+    #             import torch.nn.functional as F
+
+    #             # Cosine similarity between each pair of rows in hidden and projected
+    #             similarity = F.cosine_similarity(
+    #                 hidden, projected, dim=1
+    #             )  # shape: [33]
+
+    #             print(similarity.min(), similarity.max())
+
+    #             if self.condition_comparator_threshold_is == "smaller":
+    #                 met_mask = similarity > self.threshold
+    #             elif self.condition_comparator_threshold_is == "larger":
+    #                 met_mask = similarity < self.threshold
+
+    #             # Find the first index where condition is met
+    #             met_indices = torch.nonzero(met_mask, as_tuple=False)
+
+    #             if met_indices.numel() > 0:
+    #                 first_met_index = met_indices[0].item()
+    #                 met = True
+    #             else:
+    #                 first_met_index = None
+    #                 met = False
+
+    #             LeashLayer.condition_met[i] = met
+    #             LeashLayer.condition_met_at[i] = first_met_index
+
     def _process_multi_conditions(self, hidden_state):
         """
         Process multiple conditions for multi-steering.
@@ -312,6 +369,57 @@ class LeashLayer(nn.Module):
                         f"[Sample {i}] Applying behavior vector",
                         class_name="LeashLayer",
                     )
+
+    # def _apply_single_behavior(self, hidden_states):
+    #     """
+    #     Apply a single behavior vector to each sample in the batch if conditions are met.
+
+    #     Args:
+    #         hidden_states (Tensor): shape [batch_size, seq_len, hidden_dim]
+    #     """
+    #     batch_size = hidden_states.shape[0]
+    #     has_condition_layers = any(LeashLayer.condition_layers.values())
+    #     control = self.behavior_vector.to(dtype=hidden_states.dtype)
+
+    #     for i in range(batch_size):
+    #         should_apply = not has_condition_layers or LeashLayer.condition_met[i]
+
+    #         log(
+    #             f"[Sample {i}] Should Apply Behavior: {should_apply}",
+    #             class_name="LeashLayer",
+    #         )
+
+    #         if should_apply:
+    #             start_idx = LeashLayer.condition_met_at[i]
+    #             if start_idx is None:
+    #                 log(
+    #                     f"[Sample {i}] Condition met flag is True but no valid index found.",
+    #                     class_name="LeashLayer",
+    #                 )
+    #                 continue  # Skip if no valid index
+
+    #             if LeashLayer.forward_calls[self.layer_id] == 1:
+    #                 if self.apply_behavior_on_first_call:
+    #                     hidden_states[i, start_idx:] = self.params.operator(
+    #                         hidden_states[i, start_idx:], control
+    #                     )
+    #                     log(
+    #                         f"[Sample {i}] Applying behavior vector from index {start_idx} on first call",
+    #                         class_name="LeashLayer",
+    #                     )
+    #                 else:
+    #                     log(
+    #                         f"[Sample {i}] Skipping due to apply_behavior_on_first_call=False",
+    #                         class_name="LeashLayer",
+    #                     )
+    #             else:
+    #                 hidden_states[i, start_idx:] = self.params.operator(
+    #                     hidden_states[i, start_idx:], control
+    #                 )
+    #                 log(
+    #                     f"[Sample {i}] Applying behavior vector from index {start_idx}",
+    #                     class_name="LeashLayer",
+    #                 )
 
     def _apply_multi_behaviors(self, hidden_states):
         """
@@ -477,6 +585,7 @@ class LeashLayer(nn.Module):
     @classmethod
     def clean_leashes(cls) -> None:
         cls.condition_met = defaultdict(bool)
+        cls.condition_met_at = defaultdict(lambda: None)
         cls.forward_calls = defaultdict(int)
         cls.condition_similarities = defaultdict(
             lambda: defaultdict(float)

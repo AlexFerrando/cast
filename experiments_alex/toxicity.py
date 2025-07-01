@@ -177,6 +177,7 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
         f"Best condition point found at layer {best_layers}, threshold {best_threshold}, "
         f"direction {best_direction} (f1={f1:.4f})"
     )
+    assert False
 
     # Steer model
     malleable_model.steer(
@@ -184,9 +185,9 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
         behavior_layer_ids=[15, 16, 17, 18, 19, 20, 21, 22, 23],
         behavior_vector_strength=1.5,
         condition_vector=condition_vector,
-        condition_layer_ids=best_layers,
-        condition_vector_threshold=best_threshold,
-        condition_comparator_threshold_is=best_direction,
+        condition_layer_ids=[9],
+        condition_vector_threshold=0.033,
+        condition_comparator_threshold_is="larger",
     )
 
     return malleable_model
@@ -271,10 +272,10 @@ def evaluate_mmlu(model: MalleableModel):
 
 def main(mode=""):
     malleable_model = find_cast_model(mode=mode)
-    # evaluate_perplexity(malleable_model)
+    evaluate_perplexity(malleable_model)
     # evaluate_toxicity(malleable_model, n_tet_examples=1230, n_rtp_examples=1000)
-    evaluate_mmlu(malleable_model)
+    # evaluate_mmlu(malleable_model)
 
 
 if __name__ == "__main__":
-    main(mode="load")  # or "load"
+    main(mode="")  # or "load"
