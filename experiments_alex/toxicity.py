@@ -221,7 +221,7 @@ def evaluate_perplexity(model: MalleableModel):
     wikipedia_path = SentenceDataset.dataset_names()["wikipedia"]
     df = pd.read_csv(wikipedia_path)
     if len(df) > 20000:
-        df = df.iloc[:1280]
+        df = df.iloc[:20000]
     sentences = df.text.values.tolist()
     print(
         f"Loaded {len(sentences)} sentences from Wikipedia for perplexity evaluation."
