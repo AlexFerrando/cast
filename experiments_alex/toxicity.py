@@ -22,14 +22,14 @@ def load_model_and_tokenizer(model_name="Qwen/Qwen2.5-1.5B"):
     return model, tokenizer
 
 
-def load_toxicity_data(path="/hhome/aferrando/ml-lineas/data/toxicity.json"):
+def load_toxicity_data(path="/hhome/aferrando/ml-lineas/data/toxicity_rtp.json"):
     with open(path, "r") as file:
         data = json.load(file)
-    assistant, toxic, control = data["assistant"], data["toxic"], data["control"]
+    target, source, control = data["target"], data["source"], data["control"]
     print(
-        f"Loaded {len(assistant)} assistant examples, {len(toxic)} toxic examples, and {len(control)} control examples."
+        f"Loaded {len(target)} target examples, {len(source)} source examples, and {len(control)} control examples."
     )
-    return assistant, toxic, control
+    return target, source, control
 
 
 def extract_or_load_vector(
@@ -65,9 +65,9 @@ def find_best_condition_point(
         negative_strings=control,
         condition_vector=condition_vector,
         layer_range=(0, 13),  # (0, 13)
-        max_layers_to_combine=1,
-        threshold_range=(0.0, 0.06),
-        threshold_step=0.0001,
+        max_layers_to_combine=3,
+        threshold_range=(0.0, 0.05),
+        threshold_step=0.0005,
         save_analysis=True,
         file_path=save_path,
     )
@@ -145,11 +145,11 @@ def compute_toxicity_score(completions, batch_size=32):
 
 def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableModel:
     model, tokenizer = load_model_and_tokenizer(model_name)
-    assistant, toxic, control = load_toxicity_data()
+    target, source, control = load_toxicity_data()
 
     refusal_behavior_vector = extract_or_load_vector(
         "./outputs/vectors/refusal_behavior_vector",
-        examples=[(a, t) for a in assistant for t in toxic],
+        examples=[(a, t) for a in target for t in source],
         tokenizer=tokenizer,
         model=model,
         mode=mode,
@@ -157,7 +157,7 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
 
     condition_vector = extract_or_load_vector(
         "./outputs/vectors/toxicity_condition_vector",
-        examples=[(t, c) for t in toxic for c in control],
+        examples=[(t, c) for t in source for c in control],
         tokenizer=tokenizer,
         model=model,
         mode=mode,
@@ -165,28 +165,27 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
 
     malleable_model = MalleableModel(model=model, tokenizer=tokenizer)
 
-    best_layers, best_threshold, best_direction, f1 = find_best_condition_point(
-        malleable_model,
-        toxic,
-        control,
-        condition_vector,
-        save_path="./outputs/optimal_condition_points/optimal_condition_point_toxicity_condition_vector.json",
-    )
+    # best_layers, best_threshold, best_direction, f1 = find_best_condition_point(
+    #     malleable_model,
+    #     source,
+    #     control,
+    #     condition_vector,
+    #     save_path="./outputs/optimal_condition_points/optimal_condition_point_toxicity_condition_vector.json",
+    # )
 
-    print(
-        f"Best condition point found at layer {best_layers}, threshold {best_threshold}, "
-        f"direction {best_direction} (f1={f1:.4f})"
-    )
-    assert False
+    # print(
+    #     f"Best condition point found at layer {best_layers}, threshold {best_threshold}, "
+    #     f"direction {best_direction} (f1={f1:.4f})"
+    # )
 
     # Steer model
     malleable_model.steer(
         behavior_vector=refusal_behavior_vector,
         behavior_layer_ids=[15, 16, 17, 18, 19, 20, 21, 22, 23],
-        behavior_vector_strength=1.5,
+        behavior_vector_strength=1.0,
         condition_vector=condition_vector,
-        condition_layer_ids=[9],
-        condition_vector_threshold=0.033,
+        condition_layer_ids=[3, 4],
+        condition_vector_threshold=0.024,
         condition_comparator_threshold_is="larger",
     )
 
@@ -222,7 +221,7 @@ def evaluate_perplexity(model: MalleableModel):
     wikipedia_path = SentenceDataset.dataset_names()["wikipedia"]
     df = pd.read_csv(wikipedia_path)
     if len(df) > 20000:
-        df = df.iloc[:20000]
+        df = df.iloc[:1280]
     sentences = df.text.values.tolist()
     print(
         f"Loaded {len(sentences)} sentences from Wikipedia for perplexity evaluation."
@@ -234,7 +233,7 @@ def evaluate_perplexity(model: MalleableModel):
         model=model,
         tokenizer=model.tokenizer,
         device=torch.device("cuda"),
-        autoregressive=False,
+        autoregressive=True,
     )
     ppl_results = {
         f"perplexity": float(np.nanmean(perplexities)),
@@ -273,8 +272,8 @@ def evaluate_mmlu(model: MalleableModel):
 def main(mode=""):
     malleable_model = find_cast_model(mode=mode)
     evaluate_perplexity(malleable_model)
-    # evaluate_toxicity(malleable_model, n_tet_examples=1230, n_rtp_examples=1000)
-    # evaluate_mmlu(malleable_model)
+    evaluate_toxicity(malleable_model, n_tet_examples=1230, n_rtp_examples=0)
+    evaluate_mmlu(malleable_model)
 
 
 if __name__ == "__main__":
