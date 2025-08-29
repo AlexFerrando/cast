@@ -630,7 +630,12 @@ class MalleableModel(torch.nn.Module):
                 "max_new_tokens": 1,
                 "repetition_penalty": 1.1,
             }
-            self.respond(string, settings=settings, reset_after_response=False)
+            self.respond(
+                string,
+                settings=settings,
+                reset_after_response=False,
+                use_chat_template=False,
+            )
             similarities.append(
                 {layer: LeashLayer.condition_similarities[0][layer] for layer in layers}
             )

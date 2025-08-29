@@ -43,6 +43,7 @@ def extract_or_load_vector(
         examples=examples,
         suffixes=None,
         disable_suffixes=True,
+        use_chat_template=False,
     )
 
     vector = SteeringVector.train(
@@ -182,11 +183,11 @@ def find_cast_model(model_name="Qwen/Qwen2.5-1.5B", mode="load") -> MalleableMod
     malleable_model.steer(
         behavior_vector=refusal_behavior_vector,
         behavior_layer_ids=[15, 16, 17, 18, 19, 20, 21, 22, 23],
-        behavior_vector_strength=1.0,
+        behavior_vector_strength=6.0,
         condition_vector=condition_vector,
-        condition_layer_ids=[3, 4],
-        condition_vector_threshold=0.024,
-        condition_comparator_threshold_is="larger",
+        condition_layer_ids=[4, 5, 8],
+        condition_vector_threshold=0.049,
+        condition_comparator_threshold_is="smaller",
     )
 
     return malleable_model
@@ -277,4 +278,4 @@ def main(mode=""):
 
 
 if __name__ == "__main__":
-    main(mode="")  # or "load"
+    main(mode="load")  # "" or "load"

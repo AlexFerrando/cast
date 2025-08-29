@@ -132,6 +132,7 @@ def _autoregressive_perplexity_batch(
         _attention_mask = attention_mask[mask][:, :ctx_len]
         logits = model(input_ids=_input_ids, attention_mask=_attention_mask).logits
 
+        model.clean_leashes()
         loss = torch.nn.functional.cross_entropy(
             logits[:, -1],
             input_ids[mask][:, ctx_len].reshape(-1),

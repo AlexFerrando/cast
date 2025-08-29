@@ -44,6 +44,7 @@ class LeashLayer(nn.Module):
         self.use_ooi_preventive_normalization = False
         self.apply_behavior_on_first_call = True
         self.is_multi_steering = False
+        self.attention_type = "full_attention"  # Needed for Gemma models
         # self.reset_instance()
 
     def steer(
